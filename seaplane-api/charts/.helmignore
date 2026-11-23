@@ -21,3 +21,5 @@
 .idea/
 *.tmproj
 .vscode/
+# Go tests validate chart rendering but are not deployment assets.
+*_test.go

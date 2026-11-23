@@ -9,6 +9,23 @@ type Config struct {
 	Logging   LoggingConfig
 	RateLimit RateLimitConfig
 	Authz     AuthzConfig
+	// InstallerRole is nil unless the isolated installer-role PoC is enabled.
+	InstallerRole *InstallerRoleConfig
+}
+
+// InstallerRoleConfig is the approved deployment configuration, never request input.
+type InstallerRoleConfig struct {
+	FormatVersion             int                 `yaml:"formatVersion"`
+	EnvironmentID             string              `yaml:"environmentId"`
+	JumpRoleARN               string              `yaml:"jumpRoleArn"`
+	InstallerManagedPolicyARN string              `yaml:"installerManagedPolicyArn"`
+	TrustTemplateVersion      string              `yaml:"trustTemplateVersion"`
+	AccountAccess             AccountAccessConfig `yaml:"accountAccess"`
+}
+
+type AccountAccessConfig struct {
+	TableARN    string `yaml:"tableArn"`
+	TableRegion string `yaml:"tableRegion"`
 }
 
 type AuthzConfig struct {

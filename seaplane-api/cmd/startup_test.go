@@ -40,6 +40,8 @@ func startupCommand(t *testing.T, args ...string) *cobra.Command {
 	}
 	cmd.Flags().String(flag.Name, flag.DefValue, flag.Usage)
 	cmd.Flags().String("authz-management-config-file", "", "Optional management configuration")
+	cmd.Flags().Bool("installer-role-enabled", false, "Enable installer roles")
+	cmd.Flags().String("installer-role-config-file", "", "Installer-role configuration")
 	if err := cmd.ParseFlags(args); err != nil {
 		t.Fatal(err)
 	}

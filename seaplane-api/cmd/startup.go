@@ -15,6 +15,11 @@ import (
 func loadStartupConfig(cmd *cobra.Command, region string) (*config.Config, *authz.Authorizer, error) {
 	cfg := config.NewConfig()
 	cfg.Regional.AWSRegion = region
+	installerRole, err := loadInstallerRoleConfig(cmd)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg.InstallerRole = installerRole
 	value, err := cmd.Flags().GetString("authz-config-file")
 	if err != nil {
 		return nil, nil, err

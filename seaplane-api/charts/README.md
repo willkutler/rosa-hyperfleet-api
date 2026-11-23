@@ -37,6 +37,55 @@ platformApi:
 
 ## Installation
 
+### Installer-role PoC configuration
+
+The API chart owns the installer-role ConfigMap, read-only mount, environment
+variables, and pod checksum that rolls pods when configuration changes. The feature
+is disabled by default and should be enabled only in the isolated PoC environment.
+
+The rosa-seaplane deployment configuration must supply these values from its
+environment identity and Terraform outputs:
+
+```yaml
+global:
+  aws_region: us-east-1 # API/discovery region; independent of the table region
+platformApi:
+  installerRole:
+    enabled: true
+    environmentId: ephemeral-example-123
+    jumpRoleArn: arn:aws:iam::123456789012:role/ephemeral-example-123-jump
+    accountAccess:
+      tableArn: arn:aws:dynamodb:us-west-2:123456789012:table/example-account-access
+      tableRegion: us-west-2
+```
+
+All regional APIs in one environment must share the environment ID and table
+location. Separate ephemeral deployments need distinct environment IDs. The table
+may reside in another account; workload IAM and any table resource policy must
+permit access to its ARN. The chart does not create the table, workload identity,
+or jump role.
+
+The chart defaults `formatVersion` to `1`, `trustTemplateVersion` to `"1"`, and
+`installerManagedPolicyArn` to
+`arn:aws:iam::aws:policy/service-role/ROSAInstallerPolicy`. These are the only
+supported versions and policy for this PoC; jump-role and table ARNs must use the
+commercial `aws` partition. Environment IDs use 1–128 letters, digits, underscores,
+or hyphens and start with a letter or digit.
+
+The binary accepts `INSTALLER_ROLE_ENABLED=true` and
+`INSTALLER_ROLE_CONFIG_FILE=/etc/platform-api/installer-role/config.yaml`, or
+`--installer-role-enabled` and `--installer-role-config-file`. Explicit flags
+override environment values. Enabling requires a valid file; startup fails before
+opening database connections or listeners if configuration is missing or invalid.
+Disabled startup ignores the file. The dedicated DynamoDB client uses workload
+credentials and the table region; the API/discovery AWS configuration is preserved.
+
+This step supplies configuration and client construction. Account-association
+storage and installer-role HTTP routes are implemented in later plan steps.
+
+After these changes are committed and the API image is built, rosa-seaplane must
+pin the chart revision and API image containing them.
+
 ### Basic Installation
 
 ```bash

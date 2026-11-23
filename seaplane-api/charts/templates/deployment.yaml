@@ -16,6 +16,9 @@ spec:
         app: {{ .Values.platformApi.app.name }}
       annotations:
         checksum/authz-config: {{ include (print $.Template.BasePath "/authz-configmap.yaml") . | sha256sum }}
+        {{- if .Values.platformApi.installerRole.enabled }}
+        checksum/installer-role-config: {{ include (print $.Template.BasePath "/installer-role-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.platformApi.rateLimit.enabled }}
         checksum/rate-limits: {{ include (print $.Template.BasePath "/ratelimit-configmap.yaml") . | sha256sum }}
         {{- end }}
@@ -56,6 +59,12 @@ spec:
               value: {{ .Values.global.aws_region | quote }}
             - name: AUTHZ_CONFIG_FILE
               value: /etc/platform-api/authz/config.yaml
+            {{- if .Values.platformApi.installerRole.enabled }}
+            - name: INSTALLER_ROLE_ENABLED
+              value: "true"
+            - name: INSTALLER_ROLE_CONFIG_FILE
+              value: /etc/platform-api/installer-role/config.yaml
+            {{- end }}
             # The only account that may change the temporary account allowlist.
             - name: AWS_ACCOUNT_ID
               value: {{ .Values.global.aws_account_id | quote }}
@@ -91,6 +100,11 @@ spec:
             - name: authz-config
               mountPath: /etc/platform-api/authz
               readOnly: true
+            {{- if .Values.platformApi.installerRole.enabled }}
+            - name: installer-role-config
+              mountPath: /etc/platform-api/installer-role
+              readOnly: true
+            {{- end }}
             {{- if .Values.platformApi.rateLimit.enabled }}
             - name: rate-limits
               mountPath: /etc/platform-api/rate-limits
@@ -134,6 +148,12 @@ spec:
           configMap:
             name: authz-config
             defaultMode: 0644
+        {{- if .Values.platformApi.installerRole.enabled }}
+        - name: installer-role-config
+          configMap:
+            name: installer-role-config
+            defaultMode: 0644
+        {{- end }}
         {{- if .Values.platformApi.rateLimit.enabled }}
         - name: rate-limits
           configMap:

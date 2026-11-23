@@ -1,0 +1,8 @@
+formatVersion: 1
+environmentId: ephemeral-example-123
+jumpRoleArn: arn:aws:iam::123456789012:role/platform/ephemeral-example-123-jump
+installerManagedPolicyArn: arn:aws:iam::aws:policy/service-role/ROSAInstallerPolicy
+trustTemplateVersion: "1"
+accountAccess:
+  tableArn: arn:aws:dynamodb:us-west-2:210987654321:table/example-account-access
+  tableRegion: us-west-2

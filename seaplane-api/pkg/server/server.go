@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/accountaccess"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/api"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
@@ -31,11 +32,21 @@ type Server struct {
 	metricsServer *http.Server
 	healthHandler *apphandlers.HealthHandler
 	redisCloser   io.Closer
+	accountAccess *accountaccess.Backend
+}
+
+// Option supplies optional server dependencies.
+type Option func(*Server)
+
+// WithAccountAccess supplies the installer-role configuration and table client.
+// Installer-role routes are added in the subsequent handler implementation.
+func WithAccountAccess(backend *accountaccess.Backend) Option {
+	return func(s *Server) { s.accountAccess = backend }
 }
 
 // New creates a Server with separate resource and management authorization dependencies.
 // A nil management service leaves management routes unregistered.
-func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Authorizer, management *authz.Management, logger *slog.Logger) (*Server, error) {
+func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Authorizer, management *authz.Management, logger *slog.Logger, options ...Option) (*Server, error) {
 	if authorizer == nil {
 		return nil, fmt.Errorf("authorizer is required")
 	}
@@ -192,7 +203,7 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 	metricsRouter := mux.NewRouter()
 	metricsRouter.Handle("/metrics", promhttp.Handler()).Methods(http.MethodGet)
 
-	return &Server{
+	srv := &Server{
 		cfg:         cfg,
 		logger:      logger,
 		redisCloser: redisCloser,
@@ -222,7 +233,11 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 			IdleTimeout:       30 * time.Second,
 		},
 		healthHandler: healthHandler,
-	}, nil
+	}
+	for _, option := range options {
+		option(srv)
+	}
+	return srv, nil
 }
 
 // Run starts all servers and blocks until context is canceled

@@ -85,6 +85,19 @@ platformApi:
       policies: []
       attachments: []
 
+  # Installer-role PoC: enable only in the intended isolated environment.
+  # All regional APIs in that environment must use the same environmentId and table.
+  installerRole:
+    enabled: false
+    formatVersion: 1
+    environmentId: ""
+    jumpRoleArn: ""
+    installerManagedPolicyArn: arn:aws:iam::aws:policy/service-role/ROSAInstallerPolicy
+    trustTemplateVersion: "1"
+    accountAccess:
+      tableArn: ""
+      tableRegion: ""
+
   # Rate Limiting configuration
   rateLimit:
     enabled: true
