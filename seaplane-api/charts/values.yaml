@@ -85,10 +85,9 @@ platformApi:
       policies: []
       attachments: []
 
-  # Installer-role PoC: enable only in the intended isolated environment.
+  # Installer-role configuration is always required on the PoC branch.
   # All regional APIs in that environment must use the same environmentId and table.
   installerRole:
-    enabled: false
     formatVersion: 1
     environmentId: ""
     jumpRoleArn: ""

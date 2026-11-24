@@ -23,6 +23,8 @@ type dynamoRequest struct {
 	TableName                 string
 	Item, Key                 map[string]any
 	ConditionExpression       string
+	UpdateExpression          string
+	ExpressionAttributeNames  map[string]string
 	ExpressionAttributeValues map[string]any
 	TransactItems             []struct{ Put, Delete, ConditionCheck *dynamoRequest }
 	RequestItems              map[string]struct{ Keys []map[string]any }
@@ -43,6 +45,9 @@ func dynamoKey(in *dynamoRequest) string {
 func hasDynamoConflict(in *dynamoRequest, old map[string]any) bool {
 	if in.ConditionExpression == "attribute_not_exists(pk)" {
 		return old != nil
+	}
+	if assignment := in.ExpressionAttributeValues[":assignment"]; assignment != nil {
+		return old == nil || !reflect.DeepEqual(old["assignmentId"], assignment) || !reflect.DeepEqual(old["resourceVersion"], in.ExpressionAttributeValues[":expected"])
 	}
 	for _, token := range []string{":expected", ":policy"} {
 		if expected := in.ExpressionAttributeValues[token]; expected != nil {
@@ -103,6 +108,20 @@ func managementDynamo(t *testing.T) *dynamodb.Client {
 			_, _ = io.WriteString(w, `{}`)
 		case "GetItem":
 			_ = json.NewEncoder(w).Encode(map[string]any{"Item": items[id]})
+		case "UpdateItem":
+			if in.UpdateExpression != "SET #record = :record, resourceVersion = :next" || in.ExpressionAttributeNames["#record"] != "record" {
+				t.Errorf("unsupported update in DynamoDB fixture: %s", in.UpdateExpression)
+				w.WriteHeader(500)
+				return
+			}
+			if hasDynamoConflict(&in, items[id]) {
+				w.WriteHeader(400)
+				_, _ = io.WriteString(w, `{"__type":"com.amazonaws.dynamodb.v20120810#ConditionalCheckFailedException"}`)
+				return
+			}
+			items[id]["record"] = in.ExpressionAttributeValues[":record"]
+			items[id]["resourceVersion"] = in.ExpressionAttributeValues[":next"]
+			_, _ = io.WriteString(w, `{}`)
 		case "BatchGetItem":
 			responses := map[string][]map[string]any{}
 			for table, request := range in.RequestItems {

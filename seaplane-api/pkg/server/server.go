@@ -33,15 +33,15 @@ type Server struct {
 	healthHandler *apphandlers.HealthHandler
 	redisCloser   io.Closer
 	accountAccess *accountaccess.Backend
+	customerAWS   apphandlers.CustomerAWSAccess
 }
 
 // Option supplies optional server dependencies.
 type Option func(*Server)
 
-// WithAccountAccess supplies the installer-role configuration and table client.
-// Installer-role routes are added in the subsequent handler implementation.
-func WithAccountAccess(backend *accountaccess.Backend) Option {
-	return func(s *Server) { s.accountAccess = backend }
+// WithAccountAccess supplies storage and customer AWS dependencies explicitly.
+func WithAccountAccess(backend *accountaccess.Backend, customerAWS apphandlers.CustomerAWSAccess) Option {
+	return func(s *Server) { s.accountAccess, s.customerAWS = backend, customerAWS }
 }
 
 // New creates a Server with separate resource and management authorization dependencies.
@@ -51,6 +51,13 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 		return nil, fmt.Errorf("authorizer is required")
 	}
 	logger = logger.With("region", cfg.Regional.AWSRegion, "bundle_hash", authorizer.BundleHash())
+	dependencies := &Server{}
+	for _, option := range options {
+		option(dependencies)
+	}
+	if cfg.InstallerRole != nil && (dependencies.accountAccess == nil || dependencies.accountAccess.Store == nil || dependencies.customerAWS == nil) {
+		return nil, fmt.Errorf("installer-role storage and customer AWS dependencies are required")
+	}
 
 	// Create handlers
 	healthHandler := apphandlers.NewHealthHandler(logger)
@@ -133,6 +140,19 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 		managementRouter.HandleFunc("/attachments", h.CreateAttachment).Methods(http.MethodPost)
 		managementRouter.HandleFunc("/attachments", h.ListAttachments).Methods(http.MethodGet)
 		managementRouter.HandleFunc("/attachments/{id}", h.DeleteAttachment).Methods(http.MethodDelete)
+	}
+
+	// Production always supplies these dependencies on the PoC branch. Only this
+	// router admits valid AWS identities without prior enrollment or Cedar grants.
+	if dependencies.accountAccess != nil && dependencies.customerAWS != nil {
+		pocRouter := apiRouter.NewRoute().Subrouter()
+		pocRouter.Use(middleware.RequireIdentity(logger, func(context.Context, string) bool { return true }))
+		h := apphandlers.NewAccountAccessHandler(dependencies.accountAccess.Config, dependencies.accountAccess.Store, dependencies.customerAWS,
+			durationOrDefault(cfg.Server.WriteTimeout, 30*time.Second)*9/10, logger)
+		pocRouter.HandleFunc("/api/v0/aws-account-access", h.Initialize).Methods(http.MethodPost)
+		pocRouter.HandleFunc("/api/v0/aws-account-access", h.Complete).Methods(http.MethodPut)
+		pocRouter.HandleFunc("/api/v0/installer-role-config", h.Configuration).Methods(http.MethodGet)
+		pocRouter.HandleFunc("/api/v0/cloud_discovery/vpcs", h.ListVPCs).Methods(http.MethodGet)
 	}
 
 	resourceRouter := apiRouter.NewRoute().Subrouter()
@@ -233,9 +253,8 @@ func New(cfg *config.Config, dbClient *seaplanedb.Client, authorizer *authz.Auth
 			IdleTimeout:       30 * time.Second,
 		},
 		healthHandler: healthHandler,
-	}
-	for _, option := range options {
-		option(srv)
+		accountAccess: dependencies.accountAccess,
+		customerAWS:   dependencies.customerAWS,
 	}
 	return srv, nil
 }

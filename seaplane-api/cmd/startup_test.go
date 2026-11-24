@@ -40,7 +40,6 @@ func startupCommand(t *testing.T, args ...string) *cobra.Command {
 	}
 	cmd.Flags().String(flag.Name, flag.DefValue, flag.Usage)
 	cmd.Flags().String("authz-management-config-file", "", "Optional management configuration")
-	cmd.Flags().Bool("installer-role-enabled", false, "Enable installer roles")
 	cmd.Flags().String("installer-role-config-file", "", "Installer-role configuration")
 	if err := cmd.ParseFlags(args); err != nil {
 		t.Fatal(err)
@@ -49,6 +48,7 @@ func startupCommand(t *testing.T, args ...string) *cobra.Command {
 }
 
 func TestStartupFailureLogs(t *testing.T) {
+	t.Setenv("INSTALLER_ROLE_CONFIG_FILE", "../pkg/config/testdata/installer-role.yaml")
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AUTHZ_CONFIG_FILE", startupFile(t, strings.Replace(startupBundle, "policyID: read", "policyID: missing", 1)))
@@ -77,6 +77,7 @@ func TestStartupFailureLogs(t *testing.T) {
 }
 
 func TestStartupInputs(t *testing.T) {
+	t.Setenv("INSTALLER_ROLE_CONFIG_FILE", "../pkg/config/testdata/installer-role.yaml")
 	valid := startupFile(t, startupBundle)
 	invalid := startupFile(t, "not a bundle")
 	for _, tc := range []struct {
@@ -110,6 +111,7 @@ func TestStartupInputs(t *testing.T) {
 }
 
 func TestStartupDefaultsAndBinds(t *testing.T) {
+	t.Setenv("INSTALLER_ROLE_CONFIG_FILE", "../pkg/config/testdata/installer-role.yaml")
 	t.Setenv("AUTHZ_CONFIG_FILE", startupFile(t, startupBundle))
 	for _, address := range []string{"", "127.0.0.1"} {
 		t.Run("bind="+address, func(t *testing.T) {

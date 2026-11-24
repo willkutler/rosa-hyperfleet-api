@@ -65,6 +65,7 @@ func TestCreateLogger(t *testing.T) {
 }
 
 func TestServeRejectsMissingAuthz(t *testing.T) {
+	t.Setenv("INSTALLER_ROLE_CONFIG_FILE", "../pkg/config/testdata/installer-role.yaml")
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("POSTGRES_DSN", "")

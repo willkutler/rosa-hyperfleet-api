@@ -17,6 +17,7 @@ import (
 
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/accountaccess"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/authz"
+	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/awsaccess"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/clients/seaplanedb"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/config"
 	"github.com/openshift-online/rosa-seaplane-api/seaplane-api/pkg/server"
@@ -60,8 +61,7 @@ func init() {
 	serveCmd.Flags().String("allowed-accounts", "", "Deprecated compatibility flag; ignored")
 	serveCmd.Flags().String("authz-config-file", "", "Authorization configuration bundle (required)")
 	serveCmd.Flags().String("authz-management-config-file", "", "Optional authorization management configuration")
-	serveCmd.Flags().Bool("installer-role-enabled", false, "Enable installer-role PoC configuration (isolated environments only)")
-	serveCmd.Flags().String("installer-role-config-file", "", "Approved installer-role configuration (required when enabled)")
+	serveCmd.Flags().String("installer-role-config-file", "", "Approved installer-role PoC configuration (required)")
 	serveCmd.Flags().StringVar(&legacyDynamoDBRegion, "dynamodb-region", "", "Deprecated compatibility flag; used only as a region fallback")
 	serveCmd.Flags().String("dynamodb-prefix", "", "Deprecated compatibility flag; ignored")
 	serveCmd.Flags().StringVar(&postgresDSN, "postgres-dsn", "", "PostgreSQL connection string (required)")
@@ -108,12 +108,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var accountAccess *accountaccess.Backend
-	if cfg.InstallerRole != nil {
-		accountAccess, err = accountaccess.NewBackend(awsCfg, *cfg.InstallerRole)
-		if err != nil {
-			return fmt.Errorf("failed to initialize installer-role backend: %w", err)
-		}
+	accountAccess, err := accountaccess.NewBackend(awsCfg, *cfg.InstallerRole)
+	if err != nil {
+		return fmt.Errorf("failed to initialize installer-role backend: %w", err)
+	}
+	customerAWS, err := awsaccess.New(awsCfg, *cfg.InstallerRole)
+	if err != nil {
+		return fmt.Errorf("failed to initialize customer AWS access: %w", err)
 	}
 
 	management, err := loadManagement(cmd, awsCfg)
@@ -207,7 +208,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create server
-	srv, err := server.New(cfg, dbClient, authorizer, management, logger, server.WithAccountAccess(accountAccess))
+	srv, err := server.New(cfg, dbClient, authorizer, management, logger, server.WithAccountAccess(accountAccess, customerAWS))
 	if err != nil {
 		return fmt.Errorf("failed to create server: %w", err)
 	}

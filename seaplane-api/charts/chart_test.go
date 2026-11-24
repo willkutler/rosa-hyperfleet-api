@@ -46,11 +46,7 @@ func helmTemplate(t *testing.T, overrides ...string) ([]byte, error) {
 	}
 	args := []string{"template", "platform-api", "."}
 	for _, value := range overrides {
-		flag := "--set-string"
-		if strings.HasPrefix(value, "platformApi.installerRole.enabled=") {
-			flag = "--set"
-		}
-		args = append(args, flag, value)
+		args = append(args, "--set-string", value)
 	}
 	return exec.Command(helm, args...).CombinedOutput()
 }
@@ -76,11 +72,8 @@ func renderedManifests(t *testing.T, overrides ...string) map[string]manifest {
 }
 
 func TestInstallerRoleChart(t *testing.T) {
-	defaults := renderedManifests(t)
-	assertDisabledChart(t, defaults)
 
 	settings := []string{
-		"platformApi.installerRole.enabled=true",
 		"global.aws_region=us-east-1",
 		"platformApi.installerRole.environmentId=ephemeral-example-123",
 		"platformApi.installerRole.jumpRoleArn=arn:aws:iam::123456789012:role/example-jump",
@@ -106,7 +99,7 @@ func TestInstallerRoleChart(t *testing.T) {
 	for _, entry := range pod.Containers[0].Env {
 		env[entry.Name] = entry.Value
 	}
-	if env["INSTALLER_ROLE_ENABLED"] != "true" || env["INSTALLER_ROLE_CONFIG_FILE"] != "/etc/platform-api/installer-role/config.yaml" || env["AWS_REGION"] != "us-east-1" {
+	if env["INSTALLER_ROLE_CONFIG_FILE"] != "/etc/platform-api/installer-role/config.yaml" || env["AWS_REGION"] != "us-east-1" {
 		t.Fatalf("wrong deployment env: %+v", env)
 	}
 	mounted, volume := false, false
@@ -150,32 +143,5 @@ func TestInstallerRoleChart(t *testing.T) {
 				t.Fatalf("missing value accepted: %v\n%s", err, out)
 			}
 		})
-	}
-}
-
-func assertDisabledChart(t *testing.T, docs map[string]manifest) {
-	t.Helper()
-	if _, exists := docs["ConfigMap/installer-role-config"]; exists {
-		t.Fatal("installer-role ConfigMap rendered by default")
-	}
-	deployment := docs["Deployment/platform-api"]
-	if deployment.Spec.Template.Metadata.Annotations["checksum/installer-role-config"] != "" {
-		t.Fatal("installer-role checksum rendered by default")
-	}
-	pod := deployment.Spec.Template.Spec
-	for _, entry := range pod.Containers[0].Env {
-		if strings.HasPrefix(entry.Name, "INSTALLER_ROLE_") {
-			t.Fatal("installer-role environment rendered by default")
-		}
-	}
-	for _, mount := range pod.Containers[0].VolumeMounts {
-		if mount.Name == "installer-role-config" {
-			t.Fatal("installer-role mount rendered by default")
-		}
-	}
-	for _, volume := range pod.Volumes {
-		if volume.Name == "installer-role-config" {
-			t.Fatal("installer-role volume rendered by default")
-		}
 	}
 }

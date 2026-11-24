@@ -9,7 +9,7 @@ type Config struct {
 	Logging   LoggingConfig
 	RateLimit RateLimitConfig
 	Authz     AuthzConfig
-	// InstallerRole is nil unless the isolated installer-role PoC is enabled.
+	// InstallerRole is required by startup on this PoC branch.
 	InstallerRole *InstallerRoleConfig
 }
 

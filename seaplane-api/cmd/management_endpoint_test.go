@@ -50,6 +50,7 @@ func TestManagementLocalEndpoint(t *testing.T) {
 
 // TestManagementStartupFail rejects invalid supplied management config before a PostgreSQL connection is attempted.
 func TestManagementStartupFail(t *testing.T) {
+	t.Setenv("INSTALLER_ROLE_CONFIG_FILE", "../pkg/config/testdata/installer-role.yaml")
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AUTHZ_CONFIG_FILE", startupFile(t, startupBundle))

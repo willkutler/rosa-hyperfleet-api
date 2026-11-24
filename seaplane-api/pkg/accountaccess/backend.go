@@ -13,6 +13,7 @@ import (
 type Backend struct {
 	Config   config.InstallerRoleConfig
 	DynamoDB *dynamodb.Client
+	Store    Store
 }
 
 // NewBackend preserves the workload's AWS settings and credentials. Only the
@@ -23,5 +24,10 @@ func NewBackend(workload aws.Config, cfg config.InstallerRoleConfig) (*Backend, 
 	}
 	tableConfig := workload.Copy()
 	tableConfig.Region = cfg.AccountAccess.TableRegion
-	return &Backend{Config: cfg, DynamoDB: dynamodb.NewFromConfig(tableConfig)}, nil
+	client := dynamodb.NewFromConfig(tableConfig)
+	store, err := NewStore(client, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Backend{Config: cfg, DynamoDB: client, Store: store}, nil
 }

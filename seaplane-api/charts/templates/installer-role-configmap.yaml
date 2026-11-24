@@ -1,4 +1,3 @@
-{{- if .Values.platformApi.installerRole.enabled }}
 {{- $config := .Values.platformApi.installerRole }}
 apiVersion: v1
 kind: ConfigMap
@@ -8,11 +7,10 @@ metadata:
 data:
   config.yaml: |
     formatVersion: {{ $config.formatVersion }}
-    environmentId: {{ required "platformApi.installerRole.environmentId is required when enabled" $config.environmentId | quote }}
-    jumpRoleArn: {{ required "platformApi.installerRole.jumpRoleArn is required when enabled" $config.jumpRoleArn | quote }}
+    environmentId: {{ required "platformApi.installerRole.environmentId is required on the PoC branch" $config.environmentId | quote }}
+    jumpRoleArn: {{ required "platformApi.installerRole.jumpRoleArn is required on the PoC branch" $config.jumpRoleArn | quote }}
     installerManagedPolicyArn: {{ $config.installerManagedPolicyArn | quote }}
     trustTemplateVersion: {{ $config.trustTemplateVersion | quote }}
     accountAccess:
-      tableArn: {{ required "platformApi.installerRole.accountAccess.tableArn is required when enabled" $config.accountAccess.tableArn | quote }}
-      tableRegion: {{ required "platformApi.installerRole.accountAccess.tableRegion is required when enabled" $config.accountAccess.tableRegion | quote }}
-{{- end }}
+      tableArn: {{ required "platformApi.installerRole.accountAccess.tableArn is required on the PoC branch" $config.accountAccess.tableArn | quote }}
+      tableRegion: {{ required "platformApi.installerRole.accountAccess.tableRegion is required on the PoC branch" $config.accountAccess.tableRegion | quote }}

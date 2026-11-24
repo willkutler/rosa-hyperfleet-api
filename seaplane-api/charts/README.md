@@ -40,8 +40,9 @@ platformApi:
 ### Installer-role PoC configuration
 
 The API chart owns the installer-role ConfigMap, read-only mount, environment
-variables, and pod checksum that rolls pods when configuration changes. The feature
-is disabled by default and should be enabled only in the isolated PoC environment.
+variables, and pod checksum that rolls pods when configuration changes. This PoC
+branch always enables installer-role setup and discovery. There is no per-environment
+toggle; every deployment must supply the installer-role configuration.
 
 The rosa-seaplane deployment configuration must supply these values from its
 environment identity and Terraform outputs:
@@ -51,7 +52,6 @@ global:
   aws_region: us-east-1 # API/discovery region; independent of the table region
 platformApi:
   installerRole:
-    enabled: true
     environmentId: ephemeral-example-123
     jumpRoleArn: arn:aws:iam::123456789012:role/ephemeral-example-123-jump
     accountAccess:
@@ -72,16 +72,53 @@ supported versions and policy for this PoC; jump-role and table ARNs must use th
 commercial `aws` partition. Environment IDs use 1–128 letters, digits, underscores,
 or hyphens and start with a letter or digit.
 
-The binary accepts `INSTALLER_ROLE_ENABLED=true` and
-`INSTALLER_ROLE_CONFIG_FILE=/etc/platform-api/installer-role/config.yaml`, or
-`--installer-role-enabled` and `--installer-role-config-file`. Explicit flags
-override environment values. Enabling requires a valid file; startup fails before
-opening database connections or listeners if configuration is missing or invalid.
-Disabled startup ignores the file. The dedicated DynamoDB client uses workload
-credentials and the table region; the API/discovery AWS configuration is preserved.
+The binary requires
+`INSTALLER_ROLE_CONFIG_FILE=/etc/platform-api/installer-role/config.yaml` or
+`--installer-role-config-file`. An explicit flag overrides the environment value.
+Startup fails before opening database connections or listeners if configuration is
+missing or invalid. The dedicated DynamoDB client uses workload credentials and the
+table region; STS and customer EC2 clients retain the API region.
 
-This step supplies configuration and client construction. Account-association
-storage and installer-role HTTP routes are implemented in later plan steps.
+The four PoC routes are available to gateway-authenticated AWS callers without
+prior account enrollment, Cedar permissions, Red Hat login, or organization mapping:
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| POST | `/api/v0/aws-account-access` | Initialize the owning account's assignment with `prefix` and `path`; 201 created, 200 unchanged, 409 conflicting selection. |
+| GET | `/api/v0/installer-role-config` | Read approved metadata, trust, shared tags, and concurrency tokens; allocates nothing. |
+| PUT | `/api/v0/aws-account-access` | Supply `assignmentId`, `resourceVersion`, and `configurationRevision` from GET; validate AWS trust/access and mark Ready. |
+| GET | `/api/v0/cloud_discovery/vpcs` | List all customer VPCs in the API region through a Ready assignment and both role hops. |
+
+Requests cannot override the customer account, environment, role ARN, ExternalId,
+or region, and no query parameters are accepted. ExternalId is always the verified
+owning AWS account ID. Existing resource authorization remains in place. These
+handlers rely on the private backend's gateway-only ingress and the gateway's
+SigV4 verification and identity-header replacement; headers alone do not authenticate
+an otherwise public backend.
+
+The shared DynamoDB table stores assignments under
+`pk=ENV#<environment>#ACCOUNT#<account>`, `sk=INSTALLER`. Initialization and state
+updates are conditional, and reads are strongly consistent. Repeating setup keeps
+the assignment ID; every state update replaces its opaque `resourceVersion` UUID.
+The wire field is `resourceVersion`, corresponding to the plan's assignment revision.
+Assignments contain no credentials or placeholder organization ownership.
+
+Completion freshly assumes the jump and installer roles, checks IAM role identity,
+shared `red-hat-managed=true` and `seaplane-access=true` tags, managed policy attachment,
+and explicit ExternalId-protected trust. Compatible explicit role principals for
+other environments are allowed. Wildcard/account-wide principals, ambiguous JSON,
+unsupported trust shapes, and ExternalId bypasses are rejected. Negative assumption
+checks require an actual AWS authorization denial; throttling/timeouts are
+inconclusive. Failed revalidation conditionally returns a previously Ready record
+to Pending without overwriting newer results. Discovery requires validation against
+the current configuration. Ready denotes AWS validation, not verified Red Hat
+organization ownership.
+
+Run the unit, fake AWS, HTTP workflow, and chart tests from `seaplane-api` with
+`GOWORK=off go test -race ./...`. DynamoDB Local persistence/concurrency tests run
+with `GOWORK=off go test -race -tags integration ./pkg/accountaccess`. They use
+`ACCOUNT_ACCESS_DYNAMODB_ENDPOINT` if set, otherwise start a disposable local Podman
+container. No real AWS credentials are used by these tests.
 
 After these changes are committed and the API image is built, rosa-seaplane must
 pin the chart revision and API image containing them.

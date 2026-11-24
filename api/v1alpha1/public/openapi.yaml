@@ -12,6 +12,96 @@ servers:
     description: API v0
 
 paths:
+  /aws-account-access:
+    description: |
+      Installer-role PoC, always enabled on this branch. Requires AWS IAM
+      authentication through the gateway; backend identity headers are overwritten
+      by the gateway. No Red Hat login, prior enrollment or Cedar grant is required.
+      The verified caller account and configured environment select the assignment.
+      Account, environment, role ARN and ExternalId overrides are prohibited.
+      No query parameters are accepted.
+    post:
+      operationId: initializeAWSAccountAccess
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitializeAWSAccountAccessRequest"
+      responses:
+        "201":
+          description: New Pending assignment; no IAM resources are created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AWSAccountAccessResponse"
+        "200":
+          description: Existing assignment with the same prefix and path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AWSAccountAccessResponse"
+        default:
+          $ref: "#/components/responses/AccountAccessError"
+    put:
+      operationId: validateAWSAccountAccess
+      description: |
+        Validates the registered role using fresh AWS credentials and marks the
+        checked assignment Ready. Copy all three concurrency/configuration values
+        from GET installer-role-config. A failed revalidation conditionally returns
+        a previously Ready assignment to Pending without overwriting a newer result.
+        Ready means AWS validation succeeded, not verified organization ownership.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ValidateAWSAccountAccessRequest"
+      responses:
+        "200":
+          description: Ready assignment with a fresh resourceVersion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AWSAccountAccessResponse"
+        default:
+          $ref: "#/components/responses/AccountAccessError"
+  /installer-role-config:
+    get:
+      operationId: getInstallerRoleConfig
+      description: |
+        Returns approved role metadata for the gateway-authenticated caller's
+        existing assignment. Allocates nothing. ExternalId equals the caller's
+        AWS account ID. For an existing shared role, merge the returned trust with
+        its compatible trust instead of replacing other environments' statements.
+        No enrollment, Cedar grant, query parameters or request body is accepted.
+      responses:
+        "200":
+          description: Current assignment and approved installer-role configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstallerRoleConfigResponse"
+        default:
+          $ref: "#/components/responses/AccountAccessError"
+  /cloud_discovery/vpcs:
+    get:
+      operationId: listCustomerVPCs
+      description: |
+        Requires gateway AWS IAM authentication and this environment/account's
+        Ready assignment validated against current configuration. Uses the jump
+        role then customer installer role to list all VPCs in the API's AWS region,
+        completing AWS pagination internally. The DynamoDB table may use another
+        region. No enrollment, Cedar grant, filters, overrides or body is accepted.
+      responses:
+        "200":
+          description: Complete VPC list for the small PoC account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListVPCsResponse"
+        default:
+          $ref: "#/components/responses/AccountAccessError"
   /authz/policies:
     description: Account-scoped management. Bootstrap administrators need no legacy account enrollment. Resource grants remain separate.
     post:
@@ -990,6 +1080,20 @@ paths:
 
 components:
   responses:
+    AccountAccessError:
+      description: |
+        Kubernetes Status error. 400 malformed/unknown input or unsupported query;
+        403 invalid or missing gateway identity; 409 setup required, conflicting
+        role selection, assignment/resourceVersion mismatch or changed approved
+        configuration; 422 failed or inconclusive AWS role validation; 500 corrupt
+        stored association; 502 role assumption (ACCOUNT-ACCESS-ASSUME) or EC2
+        discovery (ACCOUNT-ACCESS-EC2) failed; 503 association storage unavailable.
+        ACCOUNT-SETUP-REQUIRED indicates a missing/Pending assignment or validation
+        against an earlier configuration. Responses never contain AWS credentials.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     AuthzError:
       description: |
         Kubernetes Status error. 400 malformed JSON, unknown fields, trailing JSON,
@@ -1064,6 +1168,104 @@ components:
               type: string
               nullable: true
   schemas:
+    InitializeAWSAccountAccessRequest:
+      type: object
+      additionalProperties: false
+      required: [prefix, path]
+      properties:
+        prefix:
+          type: string
+          minLength: 1
+          maxLength: 40
+          pattern: '^[A-Za-z0-9_+=,.@-]+$'
+          description: Prefix for the derived role name, ending in -HCP-ROSA-Installer-Role
+        path:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: IAM path, starting and ending with /; printable ASCII without wildcards
+    AWSAccountAccessResponse:
+      type: object
+      required: [assignmentId, resourceVersion, state]
+      properties:
+        assignmentId:
+          type: string
+          format: uuid
+        resourceVersion:
+          type: string
+          format: uuid
+          description: Opaque concurrency token, replaced on each checked database update
+        state:
+          type: string
+          enum: [Pending, Ready]
+    InstallerRoleConfigResponse:
+      type: object
+      required: [assignment, accountId, environmentId, roleName, path, installerRoleArn, externalId, jumpRoleArn, installerManagedPolicyArn, trustPolicy, requiredTags, configurationRevision]
+      properties:
+        assignment:
+          $ref: "#/components/schemas/AWSAccountAccessResponse"
+        accountId:
+          type: string
+          pattern: '^[0-9]{12}$'
+        environmentId:
+          type: string
+        roleName:
+          type: string
+        path:
+          type: string
+        installerRoleArn:
+          type: string
+        externalId:
+          type: string
+          description: Verified owning AWS account ID
+        jumpRoleArn:
+          type: string
+        installerManagedPolicyArn:
+          type: string
+        trustPolicy:
+          type: object
+          additionalProperties: true
+          description: Initial trust document or current environment's required trust to merge
+        requiredTags:
+          type: object
+          additionalProperties:
+            type: string
+          description: Shared managed/access markers, without exclusive environment ownership
+        configurationRevision:
+          type: string
+          description: Opaque version of the approved deployment and IAM configuration
+    ValidateAWSAccountAccessRequest:
+      type: object
+      additionalProperties: false
+      required: [assignmentId, resourceVersion, configurationRevision]
+      properties:
+        assignmentId:
+          type: string
+          format: uuid
+        resourceVersion:
+          type: string
+          format: uuid
+        configurationRevision:
+          type: string
+          minLength: 1
+    ListVPCsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CustomerVPC"
+    CustomerVPC:
+      type: object
+      required: [id, cidrBlock, isDefault]
+      properties:
+        id:
+          type: string
+        cidrBlock:
+          type: string
+        isDefault:
+          type: boolean
     AuthzPolicyRef:
       type: object
       additionalProperties: false
